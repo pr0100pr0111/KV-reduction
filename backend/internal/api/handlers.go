@@ -29,7 +29,7 @@ func (h *Handler) HandleUpload(c *gin.Context) {
 		return
 	}
 
-	ext := filepath.Ext(file.Filename) // TODO: consider supporting uppercase extensions
+	ext := filepath.Ext(file.Filename)
 	validExts := []string{".wav", ".mp3", ".ogg", ".flac"}
 	valid := false
 	for _, v := range validExts {
@@ -87,7 +87,6 @@ func (h *Handler) HandleDeleteJob(c *gin.Context) {
 		return
 	}
 
-	// Best effort to remove files
 	if job.InputFile != "" {
 		ext := filepath.Ext(job.InputFile)
 		inputPath := filepath.Join("storage", "uploads", job.ID+ext)
@@ -124,6 +123,10 @@ func (h *Handler) HandleDownload(c *gin.Context) {
 	case "audio":
 		filePath = job.OutputFile
 		fileName = "redacted_" + job.InputFile
+	case "original_audio":
+		ext := filepath.Ext(job.InputFile)
+		filePath = filepath.Join("storage", "uploads", job.ID+ext)
+		fileName = "original_" + job.InputFile
 	case "transcript":
 		c.JSON(http.StatusNotImplemented, gin.H{"error": "Transcript download not implemented"})
 		return

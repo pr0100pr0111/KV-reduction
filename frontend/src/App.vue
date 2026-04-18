@@ -24,6 +24,8 @@
         :results="results"
         :task-id="taskId"
         @new-file="resetApp"
+        :add-log="addLog"
+        :logs="logs"
       />
     </main>
   </div>
@@ -34,7 +36,7 @@ import { ref } from 'vue'
 import UploadZone from './components/UploadZone.vue'
 import ProcessingView from './components/ProcessingView.vue'
 import ResultsView from './components/ResultsView.vue'
-import { audioService } from './services/api'
+import { jobService } from './services/api'
 
 export default {
   name: 'App',
@@ -70,71 +72,70 @@ export default {
         progress.value = 10
         status.value = 'Загрузка...'
 
-        const uploadResponse = await audioService.uploadFile(file)
-        taskId.value = uploadResponse.task_id
+        const uploadResponse = await jobService.uploadFile(file, (event) => {
+          progress.value = Math.min(90, Math.round((10 + event.loaded * 80) / event.total))
+        })
+        taskId.value = uploadResponse.job_id
 
         addLog(`Файл загружен. ID задачи: ${taskId.value}`, 'success')
-        progress.value = 30
-        status.value = 'Файл загружен'
-
-        addLog('Запуск обработки...', 'info')
-        await audioService.startProcessing(taskId.value)
-
-        addLog('Обработка запущена', 'success')
         progress.value = 40
-        status.value = 'Обработка...'
+        status.value = 'Файл загружен, ожидание обработки'
 
         startPolling()
       } catch (error) {
         addLog(`Ошибка: ${error.message}`, 'error')
-        status.value = 'Ошибка'
+        status.value = 'Ошибка загрузки'
       }
     }
 
     const startPolling = () => {
       pollInterval = setInterval(async () => {
         try {
-          const statusData = await audioService.getStatus(taskId.value)
+          const jobData = await jobService.getStatus(taskId.value)
 
-          if (statusData.logs && statusData.logs.length > 0) {
-            statusData.logs.forEach(log => {
-              const exists = logs.value.some(l => l.message === log.message)
-              if (!exists) {
-                addLog(log.message, log.level || 'info')
-              }
-            })
+          if (jobData.logs && Array.isArray(jobData.logs)) {
+              jobData.logs.forEach(newLog => {
+                  if (!logs.value.some(existingLog => existingLog.message === newLog.message)) {
+                      addLog(newLog.message, newLog.level);
+                  }
+              });
           }
 
-          if (statusData.progress !== undefined) {
-            progress.value = 40 + (statusData.progress * 0.5)
+          if (jobData.stage === 'stt') {
+              progress.value = 50;
+              status.value = 'Распознавание речи...';
+          } else if (jobData.stage === 'ner') {
+              progress.value = 70;
+              status.value = 'Поиск персональных данных...';
+          } else if (jobData.stage === 'redaction') {
+              progress.value = 90;
+              status.value = 'Анонимизация аудио...';
+          } else if (jobData.progress !== undefined) {
+              progress.value = 40 + (jobData.progress * 0.5);
           }
 
-          if (statusData.status) {
-            status.value = statusData.status
-          }
-
-          if (statusData.status === 'completed') {
+          if (jobData.status === 'completed') {
             clearInterval(pollInterval)
             addLog('Обработка завершена успешно', 'success')
             progress.value = 100
             status.value = 'Готово'
-            await loadResults()
-          } else if (statusData.status === 'failed') {
+            await loadResults(jobData)
+          } else if (jobData.status === 'failed') {
             clearInterval(pollInterval)
-            addLog('Обработка завершилась с ошибкой', 'error')
-            status.value = 'Ошибка'
+            addLog(`Обработка завершилась с ошибкой: ${jobData.error}`, 'error')
+            status.value = 'Ошибка обработки'
           }
         } catch (error) {
           clearInterval(pollInterval)
           addLog(`Ошибка получения статуса: ${error.message}`, 'error')
+          status.value = 'Ошибка'
         }
-      }, 1000)
+      }, 2000)
     }
 
-    const loadResults = async () => {
+    const loadResults = async (jobData) => {
       try {
-        const resultsData = await audioService.getResults(taskId.value)
-        results.value = resultsData
+        results.value = jobData
         currentView.value = 'results'
         addLog('Результаты загружены', 'success')
       } catch (error) {
@@ -152,6 +153,7 @@ export default {
       results.value = null
       if (pollInterval) {
         clearInterval(pollInterval)
+        pollInterval = null
       }
     }
 

@@ -65,7 +65,7 @@ func main() {
 		log.Printf("🚀 Backend starting on port %s", cfg.Port)
 		log.Printf("🤖 AI Service: %s", cfg.AIServiceURL)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("listen: %s\n", err)
+			log.Fatalf("listen: %s", err)
 		}
 	}()
 

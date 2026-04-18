@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"log"
+	"path/filepath"
 
 	"github.com/pr0100pr0111/KV-redaction/internal/clients"
 	"github.com/pr0100pr0111/KV-redaction/internal/models"
@@ -26,8 +27,18 @@ func (w *JobWorker) ProcessJob(job *models.ProcessingJob, inputPath string) {
 		j.Progress = 10
 	})
 
+	absPath, err := filepath.Abs(inputPath)
+	if err != nil {
+		log.Printf("Error getting absolute path for %s: %s", inputPath, err.Error())
+		w.store.Update(job.ID, func(j *models.ProcessingJob) {
+			j.Status = "failed"
+			j.Error = "Could not determine absolute file path"
+		})
+		return
+	}
+
 	req := models.AIServiceRequest{
-		FilePath: inputPath,
+		FilePath: absPath,
 		JobID:    job.ID,
 	}
 
